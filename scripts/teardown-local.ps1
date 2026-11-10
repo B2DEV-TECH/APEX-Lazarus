@@ -3,7 +3,7 @@
 # Runs as SYSDBA through OS authentication.
 param(
     [string]$Pdb = 'FREEPDB1',
-    [string]$SqlPlus = 'C:\app\geefa\product\26ai\dbhomeFree\bin\sqlplus.exe'
+    [string]$SqlPlus = 'sqlplus'
 )
 $ErrorActionPreference = 'Stop'
 

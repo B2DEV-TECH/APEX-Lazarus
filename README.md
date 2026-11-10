@@ -10,6 +10,12 @@ The project is built around limits. Lazarus refuses incidents it cannot reproduc
 
 Week 1 of four is done. On a local Oracle Database Free with APEX 26.2, a seeded ORA-00904 went through the whole mechanical path by hand: capture in production, intake on development, reproduction, a one-line APEXlang patch, file-level import into the development application, and a clean re-run. Production was not touched. There is no agent yet. The evidence is in [`docs/WEEK1.md`](docs/WEEK1.md); the plan and its exit checks are in [`docs/SPEC.md`](docs/SPEC.md).
 
+## Lazarus Console
+
+An APEX application on the development side that shows every incident and what happened to it: the transition timeline from `LZ_AUDIT`, the checks each patch passed, and the APEXlang diff. Below, incident 5 from week 1.
+
+![Lazarus Console: incident 5, ORA-00904 fixed by a one-line APEXlang patch](docs/img/console-incident-5.png)
+
 ## Scope of the MVP
 
 - Oracle APEX 26.2 and SQLcl 26.3 (the first SQLcl with `apex import -files`), one application exported as APEXlang.
@@ -27,6 +33,7 @@ Week 1 of four is done. On a local Oracle Database Free with APEX 26.2, a seeded
 | `docs/WEEK1.md` | Week 1 results: what ran, what came back, what is not covered yet |
 | `db/prod/` | Objects installed in production: `LZ_CONFIG`, `LZ_INBOX`, the `LZ_CAPTURE` error handler, inbox retention job, grants |
 | `db/dev/` | Objects installed on the development instance: incident, context, attempt, patch and audit tables, the link to the inbox, `LZ_INTAKE` |
+| `console/app/` | Lazarus Console in APEXlang (application 1430, development workspace): incidents, timeline, patch checks, diff, evidence |
 | `demo/app/` | Demo application in APEXlang, with deployment files for production (1410) and development (1420) |
 | `demo/db/` | Demo tables and the per-environment error handler binding |
 | `demo/faults/` | Seeded faults (week 1: the email column rename) |

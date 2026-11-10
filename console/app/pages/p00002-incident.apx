@@ -1,0 +1,418 @@
+page 2 (
+    name: Incident
+    alias: INCIDENT
+    title: Incident &P2_INCIDENT_ID.
+    appearance {
+        pageTemplate: @/standard
+        templateOptions: #DEFAULT#
+    }
+    css {
+        fileUrls: #APP_FILES#console.css
+    }
+    security {
+        authentication: required
+        pageAccessProtection: argumentsMustHaveChecksum
+    }
+
+    region summary (
+        name: Incident &P2_INCIDENT_ID.
+        type: dynamicContent
+        layout {
+            sequence: 10
+            slot: body
+            columnSpan: 4
+        }
+        appearance {
+            template: @/standard
+            templateOptions: #DEFAULT#
+        }
+        source {
+            language: plsql
+            plsqlFunctionBody: ```plsql
+declare
+    v_html clob;
+
+    -- One label and value pair, escaped
+    function fact (p_label in varchar2, p_value in varchar2) return varchar2 is
+    begin
+        return '<dt>' || apex_escape.html(p_label) || '</dt><dd>' || apex_escape.html(p_value) || '</dd>';
+    end fact;
+begin
+    for i in (select * from lz_incident where incident_id = :P2_INCIDENT_ID) loop
+        v_html := '<p><span class="lz-status lz-status--' || lower(i.status) || '">'
+            || apex_escape.html(i.status) || '</span> <code class="lz-code">'
+            || apex_escape.html(i.error_code) || '</code></p><dl class="lz-facts">'
+            || fact('Application', i.app_id || ' (version ' || nvl(i.app_version, 'unknown') || ')')
+            || fact('Page', to_char(i.page_id))
+            || fact('Component', i.component_name)
+            || fact('Component type', i.component_type)
+            || fact('Occurrences', to_char(i.occurrences))
+            || fact('First seen', to_char(i.first_seen, 'YYYY-MM-DD HH24:MI:SS'))
+            || fact('Last seen', to_char(i.last_seen, 'YYYY-MM-DD HH24:MI:SS'))
+            || fact('Fingerprint', substr(i.fingerprint, 1, 16))
+            || '</dl>';
+    end loop;
+    return nvl(v_html, '<p class="lz-muted">Incident not found.</p>');
+end;
+```
+        }
+    )
+
+    region checks (
+        name: Patch checks
+        type: dynamicContent
+        layout {
+            sequence: 20
+            slot: body
+            startNewRow: false
+            columnSpan: 8
+        }
+        appearance {
+            template: @/standard
+            templateOptions: #DEFAULT#
+        }
+        source {
+            language: plsql
+            plsqlFunctionBody: ```plsql
+declare
+    v_html clob;
+
+    -- One check as a badge: PASS, FAIL, or not run yet
+    function badge (p_label in varchar2, p_result in varchar2) return varchar2 is
+    begin
+        return '<li class="lz-check lz-check--' || lower(nvl(p_result, 'none')) || '">'
+            || '<span class="lz-check-label">' || apex_escape.html(p_label) || '</span>'
+            || '<span class="lz-check-result">' || apex_escape.html(nvl(p_result, 'not run')) || '</span></li>';
+    end badge;
+begin
+    for r in (
+        select a.attempt_no, a.guard_verdict, a.refusal_reason, a.repro_result, a.model,
+               p.file_path, p.branch, p.scan_result, p.validate_result, p.import_result,
+               p.rerun_result, p.regression_result
+          from lz_attempt a
+          left join lz_patch p on p.attempt_id = a.attempt_id
+         where a.incident_id = :P2_INCIDENT_ID
+         order by a.attempt_no desc
+         fetch first 1 row only
+    ) loop
+        v_html := '<p class="lz-attempt">Attempt ' || r.attempt_no
+            || ' &middot; guard ' || apex_escape.html(nvl(r.guard_verdict, 'not run'))
+            || ' &middot; reproduction ' || apex_escape.html(nvl(r.repro_result, 'not run'))
+            || ' &middot; model ' || apex_escape.html(nvl(r.model, 'none')) || '</p>';
+        if r.refusal_reason is not null then
+            v_html := v_html || '<p class="lz-refusal">' || apex_escape.html(r.refusal_reason) || '</p>';
+        end if;
+        if r.file_path is not null then
+            v_html := v_html || '<p class="lz-file"><code>' || apex_escape.html(r.file_path) || '</code> on branch <code>'
+                || apex_escape.html(r.branch) || '</code></p>'
+                || '<ul class="lz-checks">'
+                || badge('Static scan', r.scan_result)
+                || badge('Validate', r.validate_result)
+                || badge('File import', r.import_result)
+                || badge('Re-run', r.rerun_result)
+                || badge('Regression', r.regression_result)
+                || '</ul>';
+        end if;
+    end loop;
+    return nvl(v_html, '<p class="lz-muted">No repair attempt yet.</p>');
+end;
+```
+        }
+    )
+
+    region diff (
+        name: APEXlang diff
+        type: dynamicContent
+        layout {
+            sequence: 40
+            slot: body
+            columnSpan: 12
+        }
+        appearance {
+            template: @/standard
+            templateOptions: #DEFAULT#
+        }
+        source {
+            language: plsql
+            plsqlFunctionBody: ```plsql
+declare
+    v_diff  clob;
+    v_html  clob;
+    v_line  varchar2(32767);
+    v_class varchar2(30);
+    v_start pls_integer := 1;
+    v_end   pls_integer;
+begin
+    -- Latest attempt's patch; MAX ... KEEP does not take a CLOB
+    for r in (
+        select p.diff
+          from lz_patch p
+          join lz_attempt a on a.attempt_id = p.attempt_id
+         where a.incident_id = :P2_INCIDENT_ID
+         order by a.attempt_no desc
+         fetch first 1 row only
+    ) loop
+        v_diff := r.diff;
+    end loop;
+
+    if v_diff is null then
+        return '<p class="lz-muted">No patch yet.</p>';
+    end if;
+
+    -- One span per line, coloured by the first character of the unified diff
+    v_html := '<pre class="lz-diff">';
+    loop
+        v_end := dbms_lob.instr(v_diff, chr(10), v_start);
+        v_line := dbms_lob.substr(v_diff, case when v_end = 0 then 32767 else v_end - v_start end, v_start);
+        exit when v_end = 0 and v_line is null;
+        v_class := case
+                       when v_line like 'diff --git%' or v_line like 'index %'
+                         or v_line like '--- %' or v_line like '+++ %' then 'lz-diff-meta'
+                       when v_line like '@@%' then 'lz-diff-hunk'
+                       when v_line like '+%' then 'lz-diff-add'
+                       when v_line like '-%' then 'lz-diff-del'
+                       else 'lz-diff-ctx'
+                   end;
+        v_html := v_html || '<span class="' || v_class || '">' || apex_escape.html(v_line) || '</span>';
+        exit when v_end = 0;
+        v_start := v_end + 1;
+    end loop;
+    return v_html || '</pre>';
+end;
+```
+        }
+    )
+
+    region timeline (
+        name: Timeline
+        type: classicReport
+        componentAppearance {
+            template: @/timeline
+        }
+        layout {
+            sequence: 30
+            slot: body
+            columnSpan: 12
+        }
+        pagination {
+            type: showAll
+        }
+        appearance {
+            template: @/standard
+            templateOptions: #DEFAULT#
+        }
+        source {
+            location: localDatabase
+            type: sqlQuery
+            sqlQuery: ```sql
+select a.audit_id,
+       a.actor_type || ' ' || nvl(a.actor, '') as user_name,
+       upper(substr(a.actor_type, 1, 2)) as user_avatar,
+       case a.actor_type
+           when 'SYSTEM' then 'u-color-14'
+           when 'RUNNER' then 'u-color-9'
+           when 'AGENT'  then 'u-color-5'
+           else 'u-color-1'
+       end as user_color,
+       to_char(a.changed_at, 'YYYY-MM-DD HH24:MI:SS') as event_date,
+       a.to_status as event_type,
+       a.note as event_title,
+       case when a.from_status is null then 'Opened' else 'From ' || a.from_status end as event_desc,
+       case
+           when a.to_status in ('REFUSED', 'REJECTED', 'FAILED') then 'is-removed'
+           when a.from_status is null then 'is-new'
+           else 'is-updated'
+       end as event_status,
+       case a.to_status
+           when 'NEW'        then 'fa fa-bug'
+           when 'REPRODUCED' then 'fa fa-repeat'
+           when 'PATCHED'    then 'fa fa-code'
+           when 'VALIDATED'  then 'fa fa-check-circle'
+           when 'REFUSED'    then 'fa fa-ban'
+           when 'IN_REVIEW'  then 'fa fa-user'
+           when 'APPROVED'   then 'fa fa-thumbs-up'
+           when 'MERGED'     then 'fa fa-code-fork'
+           else 'fa fa-circle'
+       end as event_icon,
+       null as event_modifiers,
+       null as event_attributes,
+       null as event_link
+  from lz_audit a
+ where a.incident_id = :P2_INCIDENT_ID
+ order by a.audit_id
+```
+        }
+        column AUDIT_ID (
+            type: plainText
+            heading {
+                heading: Audit ID
+            }
+            layout {
+                sequence: 5
+            }
+        )
+        column USER_NAME (
+            type: plainText
+            heading {
+                heading: Actor
+            }
+            layout {
+                sequence: 10
+            }
+        )
+        column USER_AVATAR (
+            type: plainText
+            heading {
+                heading: Avatar
+            }
+            layout {
+                sequence: 20
+            }
+        )
+        column USER_COLOR (
+            type: plainText
+            heading {
+                heading: Color
+            }
+            layout {
+                sequence: 30
+            }
+        )
+        column EVENT_DATE (
+            type: plainText
+            heading {
+                heading: Date
+            }
+            layout {
+                sequence: 40
+            }
+        )
+        column EVENT_TYPE (
+            type: plainText
+            heading {
+                heading: Transition
+            }
+            layout {
+                sequence: 50
+            }
+        )
+        column EVENT_TITLE (
+            type: plainText
+            heading {
+                heading: Status
+            }
+            layout {
+                sequence: 60
+            }
+        )
+        column EVENT_DESC (
+            type: plainText
+            heading {
+                heading: Note
+            }
+            layout {
+                sequence: 70
+            }
+        )
+        column EVENT_STATUS (
+            type: plainText
+            heading {
+                heading: Event status
+            }
+            layout {
+                sequence: 80
+            }
+        )
+        column EVENT_ICON (
+            type: plainText
+            heading {
+                heading: Icon
+            }
+            layout {
+                sequence: 90
+            }
+        )
+        column EVENT_MODIFIERS (
+            type: plainText
+            heading {
+                heading: Modifiers
+            }
+            layout {
+                sequence: 100
+            }
+        )
+        column EVENT_ATTRIBUTES (
+            type: plainText
+            heading {
+                heading: Attributes
+            }
+            layout {
+                sequence: 110
+            }
+        )
+        column EVENT_LINK (
+            type: plainText
+            heading {
+                heading: Link
+            }
+            layout {
+                sequence: 120
+            }
+        )
+    )
+
+    region evidence (
+        name: Evidence
+        type: dynamicContent
+        layout {
+            sequence: 50
+            slot: body
+            columnSpan: 12
+        }
+        appearance {
+            template: @/collapsible
+            templateOptions: [
+                #DEFAULT#
+                is-collapsed
+            ]
+        }
+        source {
+            language: plsql
+            plsqlFunctionBody: ```plsql
+declare
+    v_evidence clob;
+begin
+    for r in (
+        select json_serialize(p.evidence returning clob pretty) as evidence
+          from lz_patch p
+          join lz_attempt a on a.attempt_id = p.attempt_id
+         where a.incident_id = :P2_INCIDENT_ID
+         order by a.attempt_no desc
+         fetch first 1 row only
+    ) loop
+        v_evidence := r.evidence;
+    end loop;
+
+    if v_evidence is null then
+        return '<p class="lz-muted">No evidence yet.</p>';
+    end if;
+    -- APEX_ESCAPE.HTML takes a VARCHAR2; evidence documents stay well below that
+    return '<pre class="lz-json">' || apex_escape.html(dbms_lob.substr(v_evidence, 30000, 1)) || '</pre>';
+end;
+```
+        }
+    )
+
+    pageItem P2_INCIDENT_ID (
+        type: hidden
+        layout {
+            sequence: 1
+            region: @summary
+            slot: regionBody
+        }
+        security {
+            sessionStateProtection: checksumRequiredSessionLevel
+        }
+    )
+
+)

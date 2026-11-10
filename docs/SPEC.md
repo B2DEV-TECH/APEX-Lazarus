@@ -214,9 +214,9 @@ Week 1 is a proof of concept that can kill the project early; the agent is not w
 | Week | Build | Exit check |
 |---|---|---|
 | 1 | Demo app, `LZ_CAPTURE`, inbox and development tables, `LZ_INTAKE`. By hand: edit one `.apx` page file, validate, file-import into the development application. Confirm on the instance: the `-files` syntax (`help apex import`), the reset-then-import sequence, `APEX_HUMAN_TASK` in 26.2, and that each error class reaches the handler with `component` filled, region rendering errors included. | A hand-written patch fixes a seeded ORA-00904 through the full mechanical path. |
-| 2 | `LZ_REPRO`, `LZ_GUARD`, the runner, the data reset, the 15 faults and 5 decoys with their oracles. | Every in-scope fault reproduces and every decoy is refused, with no agent involved yet. |
+| 2 | Lazarus Console (incidents, timeline, patch checks, diff), moved up from week 4 so each week has something to show. `LZ_REPRO`, `LZ_GUARD`, the runner, the data reset, the 15 faults and 5 decoys with their oracles. | Every in-scope fault reproduces and every decoy is refused, with no agent involved yet. |
 | 3 | `LZ_AGENT`, static scan, allow-list diff check, regression check, attempt and token limits, replay recording. | The first full benchmark run produces the results table. |
-| 4 | Human Task review page, merge request integration, README, limits section, recorded demo. | A stranger can clone the repository and rerun the benchmark in replay mode. |
+| 4 | Human Task review in the console, merge request integration, README, limits section, recorded demo. | A stranger can clone the repository and rerun the benchmark in replay mode. |
 
 If week 1 fails, the cause is most likely how file-level import behaves on the instance, and that finding is itself worth an article.
 
