@@ -4,9 +4,9 @@
 -- through LZ_CAPTURE alone; the development instance reads LZ_INBOX through
 -- a pull account with SELECT on that table and nothing else.
 --
--- Privileges the LAZARUS owner needs: CREATE TABLE, CREATE PROCEDURE,
--- CREATE TRIGGER, CREATE JOB, EXECUTE on SYS.DBMS_CRYPTO, and a quota on its
--- default tablespace.
+-- Privileges the LAZARUS owner needs: CREATE TABLE, CREATE SEQUENCE (identity
+-- columns), CREATE PROCEDURE, CREATE TRIGGER, CREATE JOB, EXECUTE on
+-- SYS.DBMS_CRYPTO, and a quota on its default tablespace.
 
 -- One row: the capture switch and the key used to store user names as HMACs.
 -- The pull account never gets access to this table.
@@ -42,10 +42,17 @@ create table lz_inbox (
     error_statement  clob,
     error_backtrace  clob,
     apex_error_code  varchar2(255),
+    -- APEX flags its own wrappers of application errors as internal (for
+    -- example "Error processing validation."), so the flags are recorded and
+    -- the scope decision is left to LZ_GUARD on the development instance.
+    is_internal_error        varchar2(1),
+    is_common_runtime_error  varchar2(1),
     app_user_hmac    varchar2(64),
     session_state    clob,
     constraint lz_inbox_pk         primary key (inbox_id),
-    constraint lz_inbox_state_json check (session_state is json)
+    constraint lz_inbox_state_json check (session_state is json),
+    constraint lz_inbox_internal_ck check (is_internal_error in ('Y', 'N')),
+    constraint lz_inbox_common_ck   check (is_common_runtime_error in ('Y', 'N'))
 );
 
 -- Rows are never changed after capture.

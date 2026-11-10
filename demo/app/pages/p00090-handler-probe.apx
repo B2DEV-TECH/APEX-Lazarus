@@ -1,0 +1,178 @@
+page 90 (
+    name: Handler probe
+    alias: HANDLER-PROBE
+    title: Handler probe
+    appearance {
+        pageTemplate: @/standard
+        templateOptions: #DEFAULT#
+    }
+    security {
+        authentication: required
+        pageAccessProtection: unrestricted
+    }
+    region probe (
+        name: Handler probe
+        type: staticContent
+        layout {
+            sequence: 10
+            slot: body
+        }
+        appearance {
+            template: @/standard
+            templateOptions: #DEFAULT#
+        }
+    )
+    pageItem P90_TEXT (
+        type: textField
+        label {
+            label: Amount
+        }
+        layout {
+            sequence: 10
+            region: @probe
+            slot: regionBody
+        }
+        appearance {
+            template: @/optional-floating
+            templateOptions: #DEFAULT#
+        }
+    )
+    pageItem P90_CODE (
+        type: displayOnly
+        label {
+            label: Code
+        }
+        layout {
+            sequence: 20
+            region: @probe
+            slot: regionBody
+        }
+        appearance {
+            template: @/optional-floating
+            templateOptions: #DEFAULT#
+        }
+    )
+    button check-amount (
+        buttonName: CHECK_AMOUNT
+        label: Check amount
+        layout {
+            sequence: 10
+            region: @probe
+            slot: next
+        }
+        appearance {
+            buttonTemplate: @/text
+            templateOptions: #DEFAULT#
+        }
+        behavior {
+            action: submitPage
+        }
+    )
+    computation P90_CODE (
+        itemName: P90_CODE
+        computation {
+            type: functionBody
+            language: plsql
+            plsqlFunctionBody: ```plsql
+declare
+    v_code varchar2(3);
+begin
+    v_code := 'ABCDEF';  -- ORA-06502: character string buffer too small
+    return v_code;
+end;
+```
+        }
+        execution {
+            sequence: 10
+            point: beforeHeader
+        }
+        serverSideCondition {
+            type: request=Value
+            value: C06502
+        }
+    )
+    validation amount-is-positive (
+        name: Amount is positive
+        validation {
+            type: functionBodyReturningBoolean
+            language: plsql
+            plsqlFunctionBody: ```plsql
+declare
+    v_amount number;
+begin
+    v_amount := :P90_TEXT;  -- ORA-06502 when the text is not a number
+    return v_amount > 0;
+end;
+```
+        }
+        error {
+            errorMessage: Amount must be positive.
+            displayLocation: inlineInNotification
+        }
+        execution {
+            sequence: 10
+        }
+        serverSideCondition {
+            whenButtonPressed: @check-amount
+        }
+    )
+    process probe-no-data-found (
+        name: Probe no data found
+        type: executeCode
+        advanced {
+            executionMappingIdentifier: 9001
+        }
+        execution {
+            sequence: 10
+            point: beforeHeader
+        }
+        source {
+            plsqlCode: ```plsql
+declare
+    v_name lz_employees.last_name%type;
+begin
+    select last_name into v_name from lz_employees where employee_id = -1;
+end;
+```
+        }
+        serverSideCondition {
+            type: request=Value
+            value: P01403
+        }
+    )
+    process probe-too-many-rows (
+        name: Probe too many rows
+        type: executeCode
+        advanced {
+            executionMappingIdentifier: 9002
+        }
+        execution {
+            sequence: 20
+            point: beforeHeader
+        }
+        source {
+            plsqlCode: ```plsql
+declare
+    v_name lz_employees.last_name%type;
+begin
+    select last_name into v_name from lz_employees where department_id = 10;
+end;
+```
+        }
+        serverSideCondition {
+            type: request=Value
+            value: P01422
+        }
+    )
+    branch stay-on-probe (
+        name: Stay on probe
+        behavior {
+            type: page
+            pageNumber: 90
+        }
+        execution {
+            sequence: 10
+            point: afterProcessing
+        }
+    )
+)

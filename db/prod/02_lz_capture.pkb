@@ -74,14 +74,21 @@ as
     is
         pragma autonomous_transaction;
 
-        v_enabled lz_config.capture_enabled%type;
-        v_key     lz_config.user_hmac_key%type;
-        v_app_id  number := apex_application.g_flow_id;
-        v_page_id number := apex_application.g_flow_step_id;
+        v_enabled   lz_config.capture_enabled%type;
+        v_key       lz_config.user_hmac_key%type;
+        v_app_id    number := apex_application.g_flow_id;
+        v_page_id   number := apex_application.g_flow_step_id;
+        v_version   lz_inbox.app_version%type;
+        v_user_hmac lz_inbox.app_user_hmac%type;
+        v_state     clob;
+        v_internal  lz_inbox.is_internal_error%type;
+        v_common    lz_inbox.is_common_runtime_error%type;
     begin
-        -- Only database errors raised by application components are
-        -- candidates. APEX internal errors are out of scope.
-        if p_error.ora_sqlcode is null or p_error.is_internal_error then
+        -- Only database errors are candidates. Errors that APEX flags as
+        -- internal are captured too: APEX wraps unhandled errors of
+        -- application code that way (an exception in a validation becomes
+        -- "Error processing validation."). LZ_GUARD decides the scope later.
+        if p_error.ora_sqlcode is null then
             return;
         end if;
 
@@ -95,6 +102,14 @@ as
             return;
         end if;
 
+        -- Private functions cannot be called from SQL, so their results are
+        -- computed before the insert.
+        v_version   := app_version(v_app_id);
+        v_user_hmac := user_hmac(v('APP_USER'), v_key);
+        v_state     := session_state_json(v_app_id, v_page_id);
+        v_internal  := case when p_error.is_internal_error then 'Y' else 'N' end;
+        v_common    := case when p_error.is_common_runtime_error then 'Y' else 'N' end;
+
         insert into lz_inbox (
             app_id,
             app_version,
@@ -107,11 +122,13 @@ as
             error_statement,
             error_backtrace,
             apex_error_code,
+            is_internal_error,
+            is_common_runtime_error,
             app_user_hmac,
             session_state
         ) values (
             v_app_id,
-            app_version(v_app_id),
+            v_version,
             v_page_id,
             p_error.component.type,
             p_error.component.id,
@@ -121,8 +138,10 @@ as
             p_error.error_statement,
             p_error.error_backtrace,
             p_error.apex_error_code,
-            user_hmac(v('APP_USER'), v_key),
-            session_state_json(v_app_id, v_page_id)
+            v_internal,
+            v_common,
+            v_user_hmac,
+            v_state
         );
 
         commit;

@@ -1,0 +1,194 @@
+page 3 (
+    name: Employee
+    alias: EMPLOYEE
+    title: Employee
+    appearance {
+        pageTemplate: @/standard
+        templateOptions: #DEFAULT#
+    }
+    security {
+        authentication: required
+        pageAccessProtection: argumentsMustHaveChecksum
+    }
+    region employee (
+        name: Employee
+        type: staticContent
+        layout {
+            sequence: 10
+            slot: body
+        }
+        appearance {
+            template: @/standard
+            templateOptions: #DEFAULT#
+        }
+    )
+    pageItem P3_EMPLOYEE_ID (
+        type: hidden
+        layout {
+            sequence: 1
+            region: @employee
+            slot: regionBody
+        }
+        security {
+            sessionStateProtection: checksumRequiredSessionLevel
+        }
+    )
+    pageItem P3_FULL_NAME (
+        type: displayOnly
+        label {
+            label: Name
+        }
+        layout {
+            sequence: 10
+            region: @employee
+            slot: regionBody
+        }
+        appearance {
+            template: @/optional-floating
+            templateOptions: #DEFAULT#
+        }
+    )
+    pageItem P3_EMAIL (
+        type: textField
+        label {
+            label: Email
+        }
+        layout {
+            sequence: 20
+            region: @employee
+            slot: regionBody
+        }
+        appearance {
+            template: @/required-floating
+            templateOptions: #DEFAULT#
+        }
+        validation {
+            valueRequired: true
+            maxLength: 80
+        }
+    )
+    pageItem P3_SALARY (
+        type: textField
+        label {
+            label: Salary
+        }
+        layout {
+            sequence: 30
+            region: @employee
+            slot: regionBody
+        }
+        appearance {
+            template: @/required-floating
+            templateOptions: #DEFAULT#
+        }
+        validation {
+            valueRequired: true
+        }
+    )
+    button save (
+        buttonName: SAVE
+        label: Save
+        layout {
+            sequence: 10
+            region: @employee
+            slot: next
+        }
+        appearance {
+            buttonTemplate: @/text
+            hot: true
+            templateOptions: #DEFAULT#
+        }
+        behavior {
+            action: submitPage
+        }
+    )
+    button cancel (
+        buttonName: CANCEL
+        label: Cancel
+        layout {
+            sequence: 20
+            region: @employee
+            slot: next
+        }
+        appearance {
+            buttonTemplate: @/text
+            templateOptions: #DEFAULT#
+        }
+        behavior {
+            action: redirectThisApp
+            target: {
+                page: 2
+            }
+        }
+    )
+    validation salary-is-numeric (
+        name: Salary is a number
+        validation {
+            type: itemIsNumeric
+            item: P3_SALARY
+        }
+        error {
+            errorMessage: Salary must be a number.
+            displayLocation: inlineWithFieldAndInNotification
+            associatedItem: @P3_SALARY
+        }
+        execution {
+            sequence: 10
+        }
+        serverSideCondition {
+            whenButtonPressed: @save
+        }
+    )
+    process load-employee (
+        name: Load employee
+        type: executeCode
+        advanced {
+            executionMappingIdentifier: 3001
+        }
+        execution {
+            sequence: 10
+            point: beforeHeader
+        }
+        source {
+            plsqlCode: ```plsql
+select first_name || ' ' || last_name, email, to_char(salary)
+  into :P3_FULL_NAME, :P3_EMAIL, :P3_SALARY
+  from lz_employees
+ where employee_id = to_number(:P3_EMPLOYEE_ID);
+```
+        }
+    )
+    process save-employee (
+        name: Save employee
+        type: executeCode
+        advanced {
+            executionMappingIdentifier: 3002
+        }
+        execution {
+            sequence: 10
+            point: processing
+        }
+        source {
+            plsqlCode: ```plsql
+update lz_employees
+   set email  = :P3_EMAIL,
+       salary = to_number(:P3_SALARY)
+ where employee_id = to_number(:P3_EMPLOYEE_ID);
+```
+        }
+        serverSideCondition {
+            whenButtonPressed: @save
+        }
+    )
+    branch go-to-employees (
+        name: Go to employees
+        behavior {
+            type: page
+            pageNumber: 2
+        }
+        execution {
+            sequence: 10
+            point: afterProcessing
+        }
+    )
+)
