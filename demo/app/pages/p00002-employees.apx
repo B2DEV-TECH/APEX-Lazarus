@@ -30,7 +30,7 @@ page 2 (
             sqlQuery: ```sql
 select e.employee_id,
        e.first_name || ' ' || e.last_name as full_name,
-       e.email,
+       e.email_address as email,
        e.job_title,
        d.department_name,
        e.salary,
