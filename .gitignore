@@ -1,0 +1,5 @@
+# Local credentials and lab state, never committed
+.local/
+
+# Runner and benchmark output
+out/

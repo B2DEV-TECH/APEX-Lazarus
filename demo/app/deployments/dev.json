@@ -1,0 +1,11 @@
+{
+  "workspace": {
+    "name": "LZ_DEV"
+  },
+  "app": {
+    "id": 1420,
+    "databaseSession": {
+      "parsingSchema": "LZ_DEMO_DEV"
+    }
+  }
+}

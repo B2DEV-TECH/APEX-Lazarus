@@ -1,0 +1,111 @@
+page 2 (
+    name: Employees
+    alias: EMPLOYEES
+    title: Employees
+    appearance {
+        pageTemplate: @/standard
+        templateOptions: #DEFAULT#
+    }
+    security {
+        authentication: required
+        pageAccessProtection: argumentsMustHaveChecksum
+    }
+    region employees (
+        name: Employees
+        type: classicReport
+        componentAppearance {
+            template: @/standard
+        }
+        layout {
+            sequence: 10
+            slot: body
+        }
+        appearance {
+            template: @/standard
+            templateOptions: #DEFAULT#
+        }
+        source {
+            location: localDatabase
+            type: sqlQuery
+            sqlQuery: ```sql
+select e.employee_id,
+       e.first_name || ' ' || e.last_name as full_name,
+       e.email_address as email,
+       e.job_title,
+       d.department_name,
+       e.salary,
+       apex_page.get_url(p_page => 3, p_items => 'P3_EMPLOYEE_ID', p_values => to_char(e.employee_id)) as edit_url
+  from lz_employees e
+  join lz_departments d on d.department_id = e.department_id
+ order by e.employee_id
+```
+        }
+        column EMPLOYEE_ID (
+            type: link
+            heading {
+                heading: ID
+            }
+            layout {
+                sequence: 10
+            }
+            link {
+                target: {
+                    type: url
+                    url: #EDIT_URL#
+                }
+                linkText: #EMPLOYEE_ID#
+            }
+        )
+        column FULL_NAME (
+            type: plainText
+            heading {
+                heading: Name
+            }
+            layout {
+                sequence: 20
+            }
+        )
+        column EMAIL (
+            type: plainText
+            heading {
+                heading: Email
+            }
+            layout {
+                sequence: 30
+            }
+        )
+        column JOB_TITLE (
+            type: plainText
+            heading {
+                heading: Job
+            }
+            layout {
+                sequence: 40
+            }
+        )
+        column DEPARTMENT_NAME (
+            type: plainText
+            heading {
+                heading: Department
+            }
+            layout {
+                sequence: 50
+            }
+        )
+        column SALARY (
+            type: plainText
+            heading {
+                heading: Salary
+            }
+            layout {
+                sequence: 60
+            }
+        )
+        column EDIT_URL (
+            type: hidden
+            layout {
+                sequence: 70
+            }
+        )
+    )
+)
