@@ -54,7 +54,15 @@ async function outcome(page) {
         ];
         const body = (document.querySelector('.t-Body-content') || document.body).innerText;
         const oraInBody = (body.match(/ORA-\d{5}[^\n]*/g) || []).slice(0, 3);
-        return { title: document.title, messages: [...new Set(messages)].slice(0, 3), oraInBody };
+        // Classic report shape, used as regression evidence: headings and row count.
+        const report = document.querySelector('table.t-Report-report');
+        const shape = report ? {
+            headings: Array.from(report.querySelectorAll('thead th')).map((th) => th.innerText.trim()),
+            rows: report.querySelectorAll('tbody tr').length,
+            emptyEmails: Array.from(report.querySelectorAll('tbody td[headers="EMAIL"]'))
+                .filter((td) => !td.innerText.trim()).length,
+        } : null;
+        return { title: document.title, messages: [...new Set(messages)].slice(0, 3), oraInBody, report: shape };
     });
 }
 

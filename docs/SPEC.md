@@ -1,6 +1,6 @@
 # APEX Lazarus — MVP Specification
 
-Version 0.2 · 2026-11-10 · Geraldo Viana Jr
+Version 0.3 · 2026-11-10 · Geraldo Viana Jr · week 1 results in [`WEEK1.md`](WEEK1.md)
 
 ## Thesis
 
@@ -37,7 +37,7 @@ Positioning: trustworthy agent engineering applied to APEX. The project is about
 - Shared components, themes, templates, plug-ins and workspace components.
 - DDL, data fixes, and changes to PL/SQL packages (candidate for v2).
 - Patches that span more than one file, add or remove components, or change properties outside the allow-list (see Guardrails).
-- Errors raised by APEX internals or by external systems (REST sources, EBS).
+- Errors raised by APEX itself or by external systems (REST sources, EBS). APEX also flags an unhandled error in a computation or validation as internal, but that error comes from page code and stays in scope (see Capture).
 
 ### Definition of done
 
@@ -55,7 +55,7 @@ Lazarus has three zones with one-way traffic:
 
 An incident leaves the development zone in one of three ways: as a validated patch for review, as a refusal with a recorded reason, or as a failure after the attempt budget is spent. A reviewer who rejects the patch closes the incident.
 
-The public demo runs both environments on one host, as separate pluggable databases with their own APEX installations. If a setup shares one APEX instance between them, the application IDs collide and the import must target another ID (see Risks).
+The public demo runs both environments on one APEX instance, as two workspaces with their own parsing and LAZARUS schemas, and one application source imported under two application IDs (1410 and 1420). Week 1 showed that file-level import can target the development ID through a deployment file. On this single host, the pull account is reached through a loopback database link, so traffic still crosses zones only through that account. Separate pluggable databases or instances remain the setup for real use.
 
 ## Data model
 
@@ -64,7 +64,7 @@ The public demo runs both environments on one host, as separate pluggable databa
 | Table | One row per | Notes |
 |---|---|---|
 | `LZ_CONFIG` | One row | Capture switch and the HMAC key for user names. Not readable by the pull account. |
-| `LZ_INBOX` | Captured occurrence | Insert-only from the handler: app, app version, page, component type, ID and name, `ora_sqlcode`, `ora_sqlerrm`, error statement, backtrace, user HMAC, session state (JSON, raw values), captured at. |
+| `LZ_INBOX` | Captured occurrence | Insert-only from the handler: app, app version, page, component type, ID and name, `ora_sqlcode`, `ora_sqlerrm`, error statement, backtrace, APEX error code, the internal and common-runtime flags, user HMAC, session state (JSON, raw values), captured at. |
 
 ### Development (LAZARUS schema)
 
@@ -104,8 +104,12 @@ Lazarus is six PL/SQL packages plus one external runner. The runner exists becau
 
 An application has one error handling function:
 
-- An application without one sets it to `lazarus.lz_capture.handle`.
-- An application that already has one adds a single call to `lazarus.lz_capture.log_incident(p_error)` inside it, so its users keep seeing the messages that handler produces.
+- An application without one sets it to `lz_capture.handle`.
+- An application that already has one adds a single call to `lz_capture.log_incident(p_error)` inside it, so its users keep seeing the messages that handler produces.
+
+The name has no schema prefix, so the same APEXlang source runs in both environments. In production the parsing schema has a synonym for `LAZARUS.LZ_CAPTURE`; in development it has a local `LZ_CAPTURE` that does nothing, so errors raised while testing never reach the production inbox.
+
+Capture keeps every error that carries an `ora_sqlcode`, internal or not, and stores the `is_internal_error` and `is_common_runtime_error` flags with the APEX error code. APEX flags an unhandled error in a computation or validation as internal (`APEX.COMPUTATION.UNHANDLED_ERROR`, `APEX.VALIDATION.UNHANDLED_ERROR`), so a filter on that flag loses two of the three error classes. Scope is decided in development by `LZ_GUARD`.
 
 ### Reproduction
 
@@ -118,16 +122,23 @@ An application has one error handling function:
 
 Running a component outside the engine is not identical to running the page. The benchmark measures how many seeded faults still reproduce this way.
 
+Finding the component in development:
+
+- Component IDs differ between the production and development applications after import. Every component in the demo application and the fault set has a static ID, and incidents map to development by static ID (by page and name where none exists).
+- For an error in a computation, APEX reports the page as the component, not the computation. `LZ_REPRO` identifies the computation from the error statement, or runs the page's computations in order until one fails.
+
 ### Patch path
 
 1. Reset the development application from Git HEAD (full import).
 2. Write the patched `.apx` page file.
 3. Validate the whole application directory offline: `apex validate -input <app-dir>`.
-4. Import only the patched file, from the parent of the application directory, connected to the application's parsing schema (which must be REST-enabled):
+4. Import only the patched file with SQLcl 26.3 or later (26.2.2 has no `-files`), from the parent of the application directory, connected to the development parsing schema. The deployment file sets the development workspace, application ID and parsing schema:
 
    ```
-   apex import -input my-app/ -files my-app/pages/p00003-employees.apx
+   apex import -input demo/app -deployment demo/app/deployments/dev.json -files demo/app/pages/p00002-employees.apx
    ```
+
+   A failed import does not end the SQLcl session with an error status, so the runner checks the output and the APEX dictionary after every import. In week 1 the schema did not need to be REST-enabled for this.
 
 5. Re-run the reproduction and the regression check against the development application.
 6. On a validated patch, push a branch and create the Human Task.
@@ -181,7 +192,7 @@ What counts as fixed, per class:
   - Wrong-fix attempts: patches that passed the reproduction and failed the regression check.
   - Median machine time from error to `VALIDATED`. Human time from `IN_REVIEW` to the decision is reported separately.
   - Tokens per incident.
-- **Replay mode**: model responses are recorded by prompt hash, so anyone with APEX 26.2 and SQLcl 26.2 can rerun the pipeline without a model key. Live mode needs a key.
+- **Replay mode**: model responses are recorded by prompt hash, so anyone with APEX 26.2 and SQLcl 26.3 can rerun the pipeline without a model key. Live mode needs a key.
 
 ## Demo script
 
@@ -216,8 +227,8 @@ The largest risk is reproduction fidelity, not the model: if Lazarus cannot rebu
 | Risk | What is not yet known | How it is answered |
 |---|---|---|
 | Reproduction fidelity | Running a component outside the engine differs from running the page, and some failures depend on data that changed since capture. | Count how many of the 15 faults reproduce from the captured context alone. |
-| Handler coverage | Whether all three classes, in every component type, reach the error handling function with `component` filled. | Week 1. |
-| Import target | Whether the import can target another application ID when one APEX instance hosts both environments. | Week 1. The demo default is two pluggable databases, which avoids it. |
+| Handler coverage | Answered in week 1: all three classes reach the handler with `component` filled, in processes, computations, validations and region rendering. A computation error names the page, not the computation. | Reproduction must locate the computation (see Reproduction). |
+| Import target | Answered in week 1: with a deployment file, file-level import targets another application ID on the same instance and leaves unlisted files untouched. | The demo uses one instance with two workspaces. |
 | File-level import dependencies | With several files, SQLcl resolves the order among them. How it behaves when the page references a component that changed and is not in the import is untested. | One page file per patch; refuse fixes that need a new or changed shared component. |
 | Model quality on APEXlang | No measured data on how often a model produces a valid `.apx` page file for these classes. | The benchmark is the measurement. Validation failures count as failed attempts. |
 | Raw values on development | Personal data on the development instance. | Retention limits, restricted access, masking before the prompt, and synthetic data in the public demo. |
@@ -235,6 +246,18 @@ Open questions:
 - Oracle, "What's New in Oracle APEX 26.2": release overview. URL to add.
 - [APEX_EXEC.EXECUTE_PLSQL (APEX 26.1 API reference)](https://docs.oracle.com/en/database/oracle/apex/26.1/aeapi/APEX_EXEC.EXECUTE_PLSQL-Procedure-Signature-1.html)
 - [Using SQLcl with APEXlang (APEX 26.1)](https://docs.oracle.com/en/database/oracle/apex/26.1/apxdc/using-sqlcl-apexlang.html)
+- SQLcl 26.3 `help apex import`: the `-files` and `-deployment` options and their examples.
+- [Week 1 results](WEEK1.md): the measurements behind the 0.3 changes.
+
+## Revision notes (0.2 → 0.3, week 1 results)
+
+- The demo runs on one APEX instance as two workspaces, with a loopback link for the pull account. The import target risk is closed.
+- SQLcl 26.3 is required for file-level import; the import command uses a deployment file for the development application.
+- A failed `apex import` does not set an error status; the runner checks the output and the dictionary.
+- Capture keeps internal errors and stores their flags, because APEX flags computation and validation errors as internal.
+- The handler is called without a schema prefix and resolved per environment by the parsing schema.
+- Computation errors name the page as the component; components carry static IDs for mapping production to development.
+- The REST-enabled schema prerequisite was not needed in week 1.
 
 ## Revision notes (0.1 → 0.2)
 
