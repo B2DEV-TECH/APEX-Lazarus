@@ -1,0 +1,248 @@
+page 1 (
+    name: Incidents
+    alias: INCIDENTS
+    title: Incidents
+    appearance {
+        pageTemplate: @/standard
+        templateOptions: #DEFAULT#
+    }
+    css {
+        fileUrls: #APP_FILES#console.css
+    }
+
+    region status-summary (
+        name: Status
+        type: classicReport
+        componentAppearance {
+            template: @/badge-list
+        }
+        layout {
+            sequence: 10
+            slot: body
+        }
+        appearance {
+            template: @/standard
+            templateOptions: #DEFAULT#
+        }
+        pagination {
+            type: showAll
+        }
+        source {
+            location: localDatabase
+            type: sqlQuery
+            sqlQuery: ```sql
+select count(*)                                                        as total,
+       count(case when status = 'NEW' then 1 end)                      as new_count,
+       count(case when status = 'REFUSED' then 1 end)                  as refused_count,
+       count(case when status in ('REPRODUCED', 'PATCHED') then 1 end) as working_count,
+       count(case when status in ('VALIDATED', 'IN_REVIEW') then 1 end) as review_count,
+       count(case when status in ('APPROVED', 'MERGED') then 1 end)    as merged_count,
+       count(case when status in ('FAILED', 'REJECTED') then 1 end)    as failed_count
+  from lz_incident
+```
+        }
+        column TOTAL (
+            type: plainText
+            heading {
+                heading: Incidents
+            }
+            layout {
+                sequence: 10
+            }
+        )
+        column NEW_COUNT (
+            type: plainText
+            heading {
+                heading: New
+            }
+            layout {
+                sequence: 20
+            }
+        )
+        column REFUSED_COUNT (
+            type: plainText
+            heading {
+                heading: Refused
+            }
+            layout {
+                sequence: 30
+            }
+        )
+        column WORKING_COUNT (
+            type: plainText
+            heading {
+                heading: In progress
+            }
+            layout {
+                sequence: 40
+            }
+        )
+        column REVIEW_COUNT (
+            type: plainText
+            heading {
+                heading: Validated
+            }
+            layout {
+                sequence: 50
+            }
+        )
+        column MERGED_COUNT (
+            type: plainText
+            heading {
+                heading: Approved or merged
+            }
+            layout {
+                sequence: 60
+            }
+        )
+        column FAILED_COUNT (
+            type: plainText
+            heading {
+                heading: Failed or rejected
+            }
+            layout {
+                sequence: 70
+            }
+        )
+    )
+
+    region incidents (
+        name: Incidents
+        type: classicReport
+        componentAppearance {
+            template: @/standard
+        }
+        layout {
+            sequence: 20
+            slot: body
+        }
+        appearance {
+            template: @/standard
+            templateOptions: #DEFAULT#
+        }
+        source {
+            location: localDatabase
+            type: sqlQuery
+            sqlQuery: ```sql
+select i.incident_id,
+       i.status,
+       'lz-status lz-status--' || lower(i.status) as status_class,
+       i.error_code,
+       'App ' || i.app_id || ', page ' || i.page_id as location,
+       i.component_name,
+       case i.component_type
+           when 'APEX_APPLICATION_PAGE_PROCESS' then 'process'
+           when 'APEX_APPLICATION_PAGE_COMP'    then 'computation'
+           when 'APEX_APPLICATION_PAGE_VAL'     then 'validation'
+           when 'APEX_APPLICATION_PAGE_REGIONS' then 'region'
+           when 'APEX_APPLICATION_PAGES'        then 'page'
+           else lower(i.component_type)
+       end as component_kind,
+       i.occurrences,
+       to_char(i.last_seen, 'YYYY-MM-DD HH24:MI') as last_seen,
+       apex_page.get_url(p_page => 2, p_items => 'P2_INCIDENT_ID', p_values => to_char(i.incident_id)) as detail_url
+  from lz_incident i
+ order by i.incident_id
+```
+        }
+        column INCIDENT_ID (
+            type: link
+            heading {
+                heading: Incident
+            }
+            layout {
+                sequence: 10
+            }
+            link {
+                target: {
+                    type: url
+                    url: #DETAIL_URL#
+                }
+                linkText: #INCIDENT_ID#
+            }
+        )
+        column STATUS (
+            type: plainText
+            heading {
+                heading: Status
+            }
+            layout {
+                sequence: 20
+            }
+            columnFormatting {
+                htmlExpression: <span class="#STATUS_CLASS#">#STATUS#</span>
+            }
+        )
+        column STATUS_CLASS (
+            type: hidden
+            layout {
+                sequence: 30
+            }
+        )
+        column ERROR_CODE (
+            type: plainText
+            heading {
+                heading: Error
+            }
+            layout {
+                sequence: 40
+            }
+            columnFormatting {
+                htmlExpression: <code>#ERROR_CODE#</code>
+            }
+        )
+        column LOCATION (
+            type: plainText
+            heading {
+                heading: Where
+            }
+            layout {
+                sequence: 50
+            }
+        )
+        column COMPONENT_NAME (
+            type: plainText
+            heading {
+                heading: Component
+            }
+            layout {
+                sequence: 60
+            }
+            columnFormatting {
+                htmlExpression: #COMPONENT_NAME# <span class="lz-muted">#COMPONENT_KIND#</span>
+            }
+        )
+        column COMPONENT_KIND (
+            type: hidden
+            layout {
+                sequence: 70
+            }
+        )
+        column OCCURRENCES (
+            type: plainText
+            heading {
+                heading: Occurrences
+                alignment: end
+            }
+            layout {
+                sequence: 80
+            }
+        )
+        column LAST_SEEN (
+            type: plainText
+            heading {
+                heading: Last seen
+            }
+            layout {
+                sequence: 90
+            }
+        )
+        column DETAIL_URL (
+            type: hidden
+            layout {
+                sequence: 100
+            }
+        )
+    )
+
+)

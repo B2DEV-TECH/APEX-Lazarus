@@ -9,7 +9,7 @@
 # only to the ignored .local/oracle.json and are never printed.
 param(
     [string]$Pdb = 'FREEPDB1',
-    [string]$SqlPlus = 'C:\app\geefa\product\26ai\dbhomeFree\bin\sqlplus.exe'
+    [string]$SqlPlus = 'sqlplus'
 )
 $ErrorActionPreference = 'Stop'
 
@@ -73,6 +73,8 @@ grant create session to LZ_PULL;
 begin
     apex_instance_admin.add_workspace(p_workspace => 'LZ_PRD', p_primary_schema => 'LZ_DEMO_PRD');
     apex_instance_admin.add_workspace(p_workspace => 'LZ_DEV', p_primary_schema => 'LZ_DEMO_DEV');
+    -- The Lazarus Console (application 1430) parses as LAZARUS_DEV in the development workspace
+    apex_instance_admin.add_schema(p_workspace => 'LZ_DEV', p_schema => 'LAZARUS_DEV');
 
     apex_util.set_security_group_id(apex_util.find_security_group_id('LZ_PRD'));
     apex_util.create_user(
